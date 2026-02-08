@@ -1,27 +1,43 @@
 pipeline {
-    agent {
-        docker {
-            image 'python:3.9-slim'
-            args '-u root'
-        }
+    // Użyj agenta z etykietą 'python-agent', na którym jest zainstalowany Python
+    agent any
+
+    environment {
+        // Definiujemy nazwę katalogu dla naszego wirtualnego środowiska
+        VENV_DIR = 'venv'
     }
 
     stages {
+        stage('Setup Virtual Environment') {
+            steps {
+                echo 'Setting up Python virtual environment...'
+                // Sprawdź, czy katalog venv już istnieje, jeśli tak, usuń go, aby zapewnić czyste środowisko
+                sh 'rm -rf ${VENV_DIR}'
+                // Utwórz nowe wirtualne środowisko
+                sh 'python3 -m venv ${VENV_DIR}'
+            }
+        }
+
         stage('Install Dependencies') {
             steps {
                 echo 'Installing Python dependencies...'
-                sh 'pip install -r requirements.txt'
+                // Aktywuj wirtualne środowisko i zainstaluj zależności
+                // Używamy jednego bloku sh, aby polecenia wykonywały się w tej samej sesji powłoki
+                sh '''
+                    source ${VENV_DIR}/bin/activate
+                    pip install -r requirements.txt
+                '''
             }
         }
 
         stage('Run Tests') {
             steps {
                 echo 'Running tests...'
-                // Używamy bloku try-catch, aby potok nie zatrzymał się w przypadku niepowodzenia testów
-                // Zamiast tego, zmieniamy status budowania na UNSTABLE
-                catchError(buildResult: 'UNSTABLE', stageResult: 'UNSTABLE') {
-                    sh 'pytest --junitxml=test-report.xml'
-                }
+                // Uruchom pytest w kontekście wirtualnego środowiska
+                sh '''
+                    source ${VENV_DIR}/bin/activate
+                    pytest --junitxml=test-report.xml
+                '''
             }
             post {
                 always {
@@ -30,44 +46,38 @@ pipeline {
             }
         }
 
-        stage('Deploy to STAGE') {
-            // Ten etap wykona się tylko, jeśli budowanie zakończyło się sukcesem
+        stage('Deploy') {
             when {
-                expression { currentBuild.result == 'SUCCESS' }
+                expression { currentBuild.result == null || currentBuild.result == 'SUCCESS' }
             }
             steps {
-                echo 'All tests passed. Deploying the application to STAGE environment...'
-                // Tutaj umieściłbyś skrypty wdrażające na środowisko STAGE
-                // np. sh './deploy-to-stage.sh'
-            }
-        }
-
-        stage('Deploy to DEV') {
-            // Ten etap wykona się tylko, jeśli budowanie jest niestabilne (testy nie powiodły się)
-            when {
-                expression { currentBuild.result == 'UNSTABLE' }
-            }
-            steps {
-                echo 'Some tests failed. Deploying the application to DEV environment for debugging...'
-                // Tutaj umieściłbyś skrypty wdrażające na środowisko DEV
-                // np. sh './deploy-to-dev.sh'
+                echo 'Tests passed successfully. Deploying the application...'
+                // W tym miejscu mogłoby nastąpić wdrożenie, np. przez skopiowanie plików
+                // lub uruchomienie aplikacji na serwerze docelowym przy użyciu Ansible/SSH.
+                sh '''
+                    source ${VENV_DIR}/bin/activate
+                    echo "Simulating deployment of Flask app..."
+                    # Przykład: uruchomienie aplikacji w tle (w prawdziwym scenariuszu użyłbyś np. Gunicorn + systemd)
+                    # nohup flask run --host=0.0.0.0 &
+                '''
             }
         }
     }
 
     post {
         always {
-            echo 'Pipeline finished.'
+            echo 'Pipeline finished. Cleaning up virtual environment...'
+            // Posprzątaj po sobie, usuwając wirtualne środowisko
+            sh 'rm -rf ${VENV_DIR}'
         }
         success {
-            echo 'Pipeline executed successfully and deployed to STAGE.'
-        }
-        unstable {
-            echo 'Pipeline is unstable (tests failed) and deployed to DEV.'
+            echo 'Pipeline executed successfully!'
         }
         failure {
-            // Ten status wystąpi, jeśli potok zawiedzie z innego powodu niż testy (np. błąd składni, problem z agentem)
-            echo 'Pipeline failed catastrophically!'
+            echo 'Pipeline failed!'
+        }
+        unstable {
+            echo 'Pipeline is unstable, some tests failed.'
         }
     }
 }
