@@ -24,7 +24,7 @@ pipeline {
                 // Aktywuj wirtualne środowisko i zainstaluj zależności
                 // Używamy jednego bloku sh, aby polecenia wykonywały się w tej samej sesji powłoki
                 sh '''
-                    source ${VENV_DIR}/bin/activate
+                    . ${VENV_DIR}/bin/activate
                     pip install -r requirements.txt
                 '''
             }
@@ -35,7 +35,7 @@ pipeline {
                 echo 'Running tests...'
                 // Uruchom pytest w kontekście wirtualnego środowiska
                 sh '''
-                    source ${VENV_DIR}/bin/activate
+                    . ${VENV_DIR}/bin/activate
                     pytest --junitxml=test-report.xml
                 '''
             }
@@ -55,7 +55,7 @@ pipeline {
                 // W tym miejscu mogłoby nastąpić wdrożenie, np. przez skopiowanie plików
                 // lub uruchomienie aplikacji na serwerze docelowym przy użyciu Ansible/SSH.
                 sh '''
-                    source ${VENV_DIR}/bin/activate
+                    . ${VENV_DIR}/bin/activate
                     echo "Simulating deployment of Flask app..."
                     # Przykład: uruchomienie aplikacji w tle (w prawdziwym scenariuszu użyłbyś np. Gunicorn + systemd)
                     # nohup flask run --host=0.0.0.0 &
