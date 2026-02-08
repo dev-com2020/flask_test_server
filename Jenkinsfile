@@ -2,7 +2,7 @@ pipeline {
     agent {
         docker {
             image 'python:3.9-slim'
-            args '-u root' // Uruchom jako root, aby móc instalować pakiety
+            args '-u root'
         }
     }
 
@@ -17,46 +17,57 @@ pipeline {
         stage('Run Tests') {
             steps {
                 echo 'Running tests...'
-                // Uruchom pytest i generuj raport w formacie JUnit XML
-                sh 'pytest --junitxml=test-report.xml'
+                // Używamy bloku try-catch, aby potok nie zatrzymał się w przypadku niepowodzenia testów
+                // Zamiast tego, zmieniamy status budowania na UNSTABLE
+                catchError(buildResult: 'UNSTABLE', stageResult: 'UNSTABLE') {
+                    sh 'pytest --junitxml=test-report.xml'
+                }
             }
             post {
                 always {
-                    // Zawsze publikuj wyniki testów
                     junit 'test-report.xml'
                 }
             }
         }
 
-        stage('Deploy') {
-            // Ten etap wykona się tylko, jeśli poprzednie etapy zakończyły się sukcesem
+        stage('Deploy to STAGE') {
+            // Ten etap wykona się tylko, jeśli budowanie zakończyło się sukcesem
             when {
-                expression { currentBuild.result == null || currentBuild.result == 'SUCCESS' }
+                expression { currentBuild.result == 'SUCCESS' }
             }
             steps {
-                echo 'Tests passed successfully. Deploying the application...'
-                // W prawdziwym scenariuszu, tutaj znalazłyby się kroki wdrożeniowe, np.:
-                // sh './deploy.sh'
-                // sh 'docker build -t my-app:latest .'
-                // sh 'docker push my-registry/my-app:latest'
+                echo 'All tests passed. Deploying the application to STAGE environment...'
+                // Tutaj umieściłbyś skrypty wdrażające na środowisko STAGE
+                // np. sh './deploy-to-stage.sh'
+            }
+        }
+
+        stage('Deploy to DEV') {
+            // Ten etap wykona się tylko, jeśli budowanie jest niestabilne (testy nie powiodły się)
+            when {
+                expression { currentBuild.result == 'UNSTABLE' }
+            }
+            steps {
+                echo 'Some tests failed. Deploying the application to DEV environment for debugging...'
+                // Tutaj umieściłbyś skrypty wdrażające na środowisko DEV
+                // np. sh './deploy-to-dev.sh'
             }
         }
     }
 
     post {
-        // Ten blok wykonuje się na końcu całego potoku
         always {
             echo 'Pipeline finished.'
         }
         success {
-            echo 'Pipeline executed successfully!'
-        }
-        failure {
-            echo 'Pipeline failed!'
+            echo 'Pipeline executed successfully and deployed to STAGE.'
         }
         unstable {
-            // Dzieje się tak, gdy testy nie powiodą się, ale nie przerywają potoku
-            echo 'Pipeline is unstable, some tests failed.'
+            echo 'Pipeline is unstable (tests failed) and deployed to DEV.'
+        }
+        failure {
+            // Ten status wystąpi, jeśli potok zawiedzie z innego powodu niż testy (np. błąd składni, problem z agentem)
+            echo 'Pipeline failed catastrophically!'
         }
     }
 }
